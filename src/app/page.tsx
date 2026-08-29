@@ -1,69 +1,89 @@
-import Image from "next/image";
+"use client";
+import { useEffect } from "react";
+import { useStore } from "@/lib/store";
+import { isDueToday, INTERVALS_DAYS } from "@/lib/leitner";
+import Link from "next/link";
 
-export default function Home() {
+export default function Dashboard() {
+  const { cards, progress, importSeed } = useStore();
+  useEffect(() => { importSeed(); }, [importSeed]);
+
+  const due = cards.filter(c => isDueToday(c.due)).length;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const newToday = cards.filter(c => c.createdAt?.slice(0,10)===todayStr).length;
+  const byStage: Record<number, number> = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+  cards.forEach(c=> {byStage[c.leitnerStage??0]++;});
+  const kpiGoal = progress.dailyGoal || 20;
+  const kpiPct = Math.min(100, Math.round(newToday/kpiGoal*100));
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="space-y-6">
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-zinc-900 via-zinc-800 to-amber-900 text-white p-6 md:p-8">
+        <div className="absolute -top-20 -right-20 h-64 w-64 bg-amber-500/20 rounded-full blur-3xl" />
+        <p className="text-xs tracking-[0.2em] text-amber-200/70 font-semibold">HALLMARK EDITION</p>
+        <h1 className="mt-1 text-2xl md:text-3xl font-serif font-bold">Chào mừng trở lại 👋</h1>
+        <p className="text-zinc-300 mt-2">KPI <b>20 từ mới/ngày</b> • Lịch vàng 1–3–7–14–30–60 • 15 phút/ngày</p>
+        <div className="mt-6 grid grid-cols-3 gap-3">
+          <Stat label="Streak" value={`${progress.streak} ngày`} sub="giữ lửa" />
+          <Stat label="Đến hạn hôm nay" value={`${due} thẻ`} sub={`${cards.length} tổng`} highlight />
+          <Stat label="KPI hôm nay" value={`${newToday}/${kpiGoal}`} sub={`${kpiPct}%`} />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="mt-3 h-2 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-amber-400 to-rose-400" style={{width: `${kpiPct}%`}} />
         </div>
-      </main>
+        <div className="flex gap-3 mt-6 flex-wrap">
+          <Link href="/flashcards" className="bg-white text-zinc-900 px-6 py-2.5 rounded-full font-medium text-sm shadow">Học Hallmark →</Link>
+          <Link href="/settings" className="bg-white/10 border border-white/20 text-white px-5 py-2.5 rounded-full text-sm">Cài đặt API</Link>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-white border p-5">
+        <h2 className="font-serif font-semibold">Lịch ôn vàng (theo ảnh của bạn)</h2>
+        <div className="mt-3 grid grid-cols-3 md:grid-cols-6 gap-2">
+          {INTERVALS_DAYS.map((d,i)=> (
+            <div key={i} className="rounded-2xl border bg-[#FFFBEB]/60 p-3 text-center">
+              <div className="text-[11px] tracking-widest text-zinc-500">LẦN {i+1}</div>
+              <div className="font-bold">{d} ngày</div>
+              <div className="text-[11px] text-zinc-500">{["Ngày 1","Ngày 4","Ngày 11","Ngày 25","Ngày 55","60+ ngày"][i]}</div>
+              <div className="mt-2 text-xs font-medium">{byStage[i+1]||0} thẻ</div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-zinc-500 mt-2">Mới học → 1 ngày sau ôn lần 1, nhớ thì 3 ngày sau lần 2... Quên thì quay về Ngày 1. Đạt 60 ngày = master.</p>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-4">
+        <CardLink href="/flashcards" title="Flashcard Hallmark" desc={`${cards.length} từ • ${due} đến hạn • ${newToday}/${kpiGoal} hôm nay`} badge="KPI 20/ngày" highlight />
+        <CardLink href="/reading" title="Reading & Listening" desc="Bài đọc CEFR + TTS OpenAI/ShopAIKey" badge="AI TTS" />
+        <CardLink href="/writing" title="AI Writing Coach" desc="Chấm gpt-4.1-mini, giải thích tiếng Việt" badge="GPT-4.1" />
+      </div>
+
+      <div className="bg-white rounded-2xl border p-5 flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold">XP • Level</h3>
+          <p className="text-sm text-zinc-600">{progress.xp} XP • Lv.{progress.level} • {progress.totalReviews} lượt ôn</p>
+        </div>
+        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-amber-400 to-rose-500 grid place-items-center text-white font-bold">{progress.level}</div>
+      </div>
     </div>
+  );
+}
+
+function Stat({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
+  return (
+    <div className={`rounded-2xl p-3 ${highlight ? "bg-white text-zinc-900" : "bg-white/10"}`}>
+      <div className="text-xs opacity-70">{label}</div>
+      <div className="font-bold">{value}</div>
+      {sub && <div className="text-[11px] opacity-60">{sub}</div>}
+    </div>
+  );
+}
+function CardLink({ href, title, desc, badge, highlight }: { href: string; title: string; desc: string; badge: string; highlight?: boolean }) {
+  return (
+    <Link href={href} className={`rounded-2xl border p-5 block hover:shadow-md transition ${highlight ? "bg-gradient-to-br from-amber-50 to-rose-50 border-amber-200" : "bg-white"}`}>
+      <div className={`text-xs px-2 py-1 rounded-full inline-block ${highlight ? "bg-zinc-900 text-white" : "bg-zinc-900 text-white"}`}>{badge}</div>
+      <h3 className="font-serif font-semibold mt-2">{title}</h3>
+      <p className="text-sm text-zinc-500 mt-1">{desc}</p>
+    </Link>
   );
 }
