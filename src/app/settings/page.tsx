@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import CloudSyncSettings from "@/components/CloudSyncSettings";
 import { getClientKey, setClientKey, getClientBaseURL, setClientBaseURL, getClientModel, setClientModel } from "@/lib/client-key";
 
 const PRESETS: Record<string, string> = {
@@ -61,6 +62,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      <CloudSyncSettings />
       <h1 className="text-2xl font-bold">Cài đặt • AI Gateway</h1>
       <p className="text-sm text-zinc-600">Chọn <b>ShopAIKey</b> để tiết kiệm 5-8x so với OpenAI gốc. Một key dùng cho tất cả: GPT + Whisper + TTS. Lưu ở <b>localStorage</b> (header <code>x-openai-key</code> + <code>x-openai-base-url</code>), ưu tiên hơn <code>.env.local</code>.</p>
 

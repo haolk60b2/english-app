@@ -8,6 +8,7 @@ import { isDueToday } from "@/lib/leitner";
 import { pickFallback } from "@/lib/fallback-words";
 import StudyRecall, { speakStudyText } from "@/components/StudyRecall";
 import PronunciationPractice from "@/components/PronunciationPractice";
+import { useCloudSync } from "@/lib/cloud-sync";
 
 const subscribe = () => () => {};
 const button = "rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40";
@@ -53,7 +54,7 @@ export default function StudyPage() {
         {startError && <p role="status" className="mt-3 text-sm text-amber-200">{startError} <Link href="/flashcards" className="underline">Mở Flashcards</Link></p>}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">{STUDY_STEPS.map((step, i) => <div key={step.title} className="rounded-2xl border bg-white p-5"><p className="text-sm text-amber-700">Chặng {i + 1} · {step.minutes} phút</p><h2 className="mt-1 font-semibold">{step.title}</h2><p className="mt-2 text-sm text-zinc-600">{step.description}</p></div>)}</div>
-      <p className="text-sm text-zinc-500">Tiến độ lưu trên trình duyệt này. Đồng hồ tạm dừng khi tab bị ẩn; thời gian từng chặng là gợi ý, không bắt bạn chờ hết phút.</p>
+      <p className="text-sm text-zinc-500">Tiến độ lưu trên máy và đồng bộ Supabase sau khi đăng nhập. Đồng hồ tạm dừng khi tab bị ẩn; thời gian từng chặng là gợi ý, không bắt bạn chờ hết phút.</p>
       <Link className="inline-block text-sm underline" href="/library">Mở tài liệu phát âm và ngữ pháp →</Link>
     </div>
   );
@@ -121,17 +122,22 @@ function StudyWord({ card, learning, onAnswer }: { card: VocabCard; learning: bo
 function StudyClock({ session, running }: { session: StudySession; running: boolean }) {
   const [seconds, setSeconds] = useState(session.elapsed[session.step]);
   const elapsed = useRef(session.elapsed[session.step]);
+  const owner = useRef(useCloudSync.getState().user?.id || null);
   useEffect(() => {
     let previous = Date.now();
     let lastSave = elapsed.current;
     const save = () => {
+      const cloud = useCloudSync.getState();
+      if (!cloud.ready || (cloud.user?.id || null) !== owner.current) return;
       const store = useStudyStore.getState();
       if (store.session?.date !== session.date) return;
-      store.update({ elapsed: store.session.elapsed.map((value, i) => i === session.step ? Math.floor(elapsed.current) : value) }, session.date);
+      store.update({ elapsed: store.session.elapsed.map((value, i) => i === session.step ? Math.max(value, Math.floor(elapsed.current)) : value) }, session.date);
     };
     const interval = setInterval(() => {
       const now = Date.now();
       if (running && !document.hidden) {
+        const latest = useStudyStore.getState().session;
+        if (latest?.date === session.date) elapsed.current = Math.max(elapsed.current, latest.elapsed[session.step]);
         elapsed.current += Math.min(2, (now - previous) / 1000);
         setSeconds(Math.floor(elapsed.current));
         if (elapsed.current - lastSave >= 15) { save(); lastSave = elapsed.current; }

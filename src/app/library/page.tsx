@@ -1,15 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { useLibraryProgress } from "@/lib/library-store";
 import { LESSONS, type Lesson } from "@/lib/learning-materials";
 import { speakStudyText } from "@/components/StudyRecall";
 import PronunciationPractice from "@/components/PronunciationPractice";
-
-const useLibraryProgress = create<{ read: string[]; toggle: (id: string) => void }>()(persist((set, get) => ({
-  read: [], toggle: id => set({ read: get().read.includes(id) ? get().read.filter(value => value !== id) : [...get().read, id] }),
-}), { name: "english-app-library-progress" }));
 
 export default function LibraryPage() {
   const [query, setQuery] = useState("");
