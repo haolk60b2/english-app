@@ -6,8 +6,9 @@ import { useStore } from "./store";
 import { useStudyStore } from "./study-store";
 import { useLibraryProgress } from "./library-store";
 import { importGuestData, isLearningData, type LearningData } from "./learning-data";
+import { readLearningData, writeLearningChanges, sameLearningData } from "./learning-repository";
 
-type Cache = { data: LearningData; base: LearningData | null; revision: number };
+type Cache = { data: LearningData; base: LearningData | null; revision: number; protocol?: 2 };
 type SyncState = { user: User | null; ready: boolean; status: string; error: string;
   conflict: boolean; lastSynced: string | null; busy: boolean };
 export const useCloudSync = create<SyncState>(() => ({ user: null, ready: false,
@@ -51,8 +52,8 @@ function saveCache(id: string) {
 }
 function message(cause: unknown) {
   const text = cause instanceof Error ? cause.message : String(cause);
-  if (/schema cache|42P01|relation .*does not exist/.test(text)) return "Chưa có bảng learning_data. Chạy file supabase/migrations/20261004_learning_sync.sql trong SQL Editor của đúng dự án.";
-  if (/permission denied|row-level security|42501/.test(text)) return "Supabase đang chặn quyền lưu dữ liệu. Kiểm tra chính sách RLS của learning_data theo file migration; dữ liệu trên máy vẫn được giữ.";
+  if (/schema cache|42P01|relation .*does not exist/.test(text)) return "Chưa có chức năng đồng bộ từng thẻ trên Supabase. Cần áp dụng migration normalize_learning_sync; dữ liệu trên máy vẫn được giữ.";
+  if (/permission denied|row-level security|42501/.test(text)) return "Supabase đang chặn quyền lưu dữ liệu. Kiểm tra chính sách RLS theo migration normalize_learning_sync; dữ liệu trên máy vẫn được giữ.";
   return text;
 }
 async function connect(user: User | null) {
@@ -75,6 +76,9 @@ async function connect(user: User | null) {
     importedGuest = !previous && !owner;
     cache = previous && isLearningData(previous.data) ? previous :
       { data: importedGuest ? current : empty(), base: null, revision: 0 };
+    // Old snapshot revisions belong to a different protocol. Keep pending local
+    // changes and the old baseline, but fetch the normalized cloud rows in full.
+    if (cache.protocol !== 2) { cache.revision = 0; cache.protocol = 2; }
     if (owner === user.id) cache.data = current;
     else apply(cache.data);
     localStorage.setItem(OWNER, user.id);
@@ -96,47 +100,39 @@ export async function syncNow(resolve?: "local" | "cloud") {
   syncing = true;
   useCloudSync.setState({ busy: true, error: "", status: "Đang đồng bộ…" });
   try {
-    const { data: remote, error } = await supabase.from("learning_data").select("payload,revision,updated_at").eq("user_id", user.id).maybeSingle();
-    if (error) throw new Error(error.message);
+    const remote = await readLearningData(cache.revision ? cache.base || empty() : empty(), cache.revision);
     if (generation !== epoch) return;
-    if (remote && !isLearningData(remote.payload)) throw new Error("Dữ liệu Supabase không đúng định dạng. Bản trên máy vẫn được giữ.");
     const local = snapshot();
     let outgoing = local;
     if (remote) {
-      const localChanged = !cache.base || JSON.stringify(local) !== JSON.stringify(cache.base);
-      const cloudChanged = remote.revision !== cache.revision;
+      const localChanged = !cache.base || !sameLearningData(local, cache.base);
+      const cloudChanged = !cache.base || !sameLearningData(remote.payload, cache.base);
       if (resolve) {
         localStorage.setItem(`english-app-cloud-backup:${user.id}:${Date.now()}`, JSON.stringify({ local, cloud: remote.payload }));
         outgoing = resolve === "cloud" ? remote.payload : local;
       } else if (!cache.base && importedGuest) {
         outgoing = importGuestData(remote.payload, local);
-      } else if (cloudChanged && localChanged && JSON.stringify(local) !== JSON.stringify(remote.payload)) {
+      } else if (cache.base && cloudChanged && localChanged && !sameLearningData(local, remote.payload)) {
         useCloudSync.setState({ conflict: true, status: "Hai thiết bị có thay đổi · Cần chọn bản dữ liệu" });
         return;
       } else if (cloudChanged || !localChanged) outgoing = remote.payload;
-      if (JSON.stringify(outgoing) === JSON.stringify(remote.payload)) {
+      if (sameLearningData(outgoing, remote.payload)) {
         // Only replace the local snapshot if no learning happened during the request.
-        if (JSON.stringify(snapshot()) === JSON.stringify(local)) apply(outgoing);
+        if (sameLearningData(snapshot(), local)) apply(outgoing);
         cache.base = remote.payload; cache.revision = remote.revision;
         saveCache(user.id); importedGuest = false;
         useCloudSync.setState({ conflict: false, lastSynced: remote.updated_at, status: "Đã đồng bộ" });
         return;
       }
     }
-    const updatedAt = new Date().toISOString();
-    const revision = (remote?.revision || 0) + 1;
-    const values = { user_id: user.id, payload: outgoing, revision, updated_at: updatedAt };
-    const result = remote
-      ? await supabase.from("learning_data").update(values).eq("user_id", user.id).eq("revision", remote.revision).select("revision").maybeSingle()
-      : await supabase.from("learning_data").insert(values).select("revision").single();
+    const result = await writeLearningChanges(remote.payload, outgoing, remote.revision);
     if (generation !== epoch) return;
-    if (result.error?.code === "23505" || (!result.error && !result.data)) {
+    if (result.conflict) {
       useCloudSync.setState({ conflict: true, status: "Thiết bị khác vừa cập nhật · Đồng bộ lại để chọn bản" }); return;
     }
-    if (result.error) throw new Error(result.error.message);
-    if (JSON.stringify(snapshot()) === JSON.stringify(local)) apply(outgoing);
-    cache.base = outgoing; cache.revision = revision; saveCache(user.id); importedGuest = false;
-    useCloudSync.setState({ conflict: false, lastSynced: updatedAt, status: "Đã đồng bộ" });
+    if (sameLearningData(snapshot(), local)) apply(outgoing);
+    cache.base = outgoing; cache.revision = result.revision; saveCache(user.id); importedGuest = false;
+    useCloudSync.setState({ conflict: false, lastSynced: result.updated_at, status: "Đã đồng bộ" });
   } catch (cause) {
     if (generation === epoch) useCloudSync.setState({ status: "Chưa đồng bộ · Dữ liệu vẫn ở trên máy", error: message(cause) });
   } finally {
@@ -144,7 +140,7 @@ export async function syncNow(resolve?: "local" | "cloud") {
     if (generation === epoch) {
       useCloudSync.setState({ busy: false });
       if (!useCloudSync.getState().error && !useCloudSync.getState().conflict && cache?.base &&
-        JSON.stringify(snapshot()) !== JSON.stringify(cache.base)) schedule();
+        !sameLearningData(snapshot(), cache.base)) schedule();
     } else if (active) schedule();
   }
 }

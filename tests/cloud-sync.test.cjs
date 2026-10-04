@@ -17,33 +17,61 @@ let beforeWrite;
 let failWrite = false;
 let missingTable = false;
 let writes = 0;
+const requests = [];
 const rows = new Map();
 const clone = value => JSON.parse(JSON.stringify(value));
+const empty = () => ({ version: 1, cards: [], session: null, read: [], progress: { streak: 0, lastStudyDate: null, totalReviews: 0, xp: 0, level: 1, dailyGoal: 20, lastDailyGen: null } });
+const toRow = card => ({ client_id: card.id, front: card.front, back: card.back, back_en: card.backEn, back_vi: card.backVi,
+  example: card.example, example_vi: card.exampleVi, phonetic: card.phonetic, level: card.level, tags: card.tags,
+  leitner_stage: card.leitnerStage, created_at: card.createdAt, due: card.due, last_review: card.last_review,
+  state: card.state, stability: card.stability, difficulty: card.difficulty, elapsed_days: card.elapsed_days,
+  scheduled_days: card.scheduled_days, learning_steps: card.learning_steps, reps: card.reps, lapses: card.lapses });
+const toProgress = progress => ({ streak: progress.streak, last_study_date: progress.lastStudyDate,
+  total_reviews: progress.totalReviews, xp: progress.xp, level: progress.level, daily_goal: progress.dailyGoal, last_daily_gen: progress.lastDailyGen });
 const client = {
   auth: { onAuthStateChange(callback) { authCallback = callback; return { data: { subscription: { unsubscribe() {} } } }; } },
-  from(table) {
-    assert.equal(table, 'learning_data');
-    const query = { operation: 'read', filters: {}, values: null,
-      select() { return this; }, eq(key, value) { this.filters[key] = value; return this; },
-      update(values) { this.operation = 'update'; this.values = values; return this; },
-      insert(values) { this.operation = 'insert'; this.values = values; return this; },
-      single() { return this.maybeSingle(); },
-      async maybeSingle() {
-        const id = this.values?.user_id || this.filters.user_id;
-        if (this.operation === 'read') {
-          if (missingTable) return { data: null, error: { message: 'Could not find table learning_data in schema cache' } };
-          return { data: rows.has(id) ? clone(rows.get(id)) : null, error: null };
-        }
-        if (beforeWrite) { const callback = beforeWrite; beforeWrite = null; callback(); }
-        if (failWrite) return { data: null, error: { message: 'Network request failed' } };
-        const row = rows.get(id);
-        if (this.operation === 'insert' && row) return { data: null, error: { code: '23505' } };
-        if (this.operation === 'update' && row?.revision !== this.filters.revision) return { data: null, error: null };
-        writes++; rows.set(id, clone(this.values));
-        return { data: { revision: this.values.revision }, error: null };
-      },
-    };
-    return query;
+  async rpc(name, parameters) {
+    requests.push({ name, parameters: clone(parameters) });
+    const id = useCloudSync.getState().user.id;
+    if (!rows.has(id)) rows.set(id, { payload: empty(), revision: 0, updated_at: new Date().toISOString(), deleted: [], knownLessons: [] });
+    const row = rows.get(id);
+    if (name === 'get_learning_changes') {
+      if (missingTable) return { data: null, error: { message: 'Could not find function get_learning_changes in schema cache' } };
+      const changed = row.revision > parameters.p_since_revision;
+      const session = row.payload.session;
+      return { data: clone({ revision: row.revision, updated_at: row.updated_at,
+        current_session_date: session?.date || null,
+        cards: changed ? [...row.payload.cards.map(toRow), ...row.deleted.map(client_id => ({ client_id, deleted_at: row.updated_at }))] : [],
+        progress: changed ? toProgress(row.payload.progress) : null,
+        session: changed && session ? sessionRecord(session) : null,
+        lessons: changed ? [...new Set([...row.knownLessons, ...row.payload.read])].map(lesson_id => ({ lesson_id, is_read: row.payload.read.includes(lesson_id) })) : [],
+      }), error: null };
+    }
+    assert.equal(name, 'save_learning_changes');
+    if (beforeWrite) { const callback = beforeWrite; beforeWrite = null; callback(); }
+    if (failWrite) return { data: null, error: { message: 'Network request failed' } };
+    if (row.revision !== parameters.p_expected_revision) return { data: { conflict: true, revision: row.revision, updated_at: null }, error: null };
+    writes++;
+    const changes = parameters.p_changes;
+    const cards = new Map(row.payload.cards.map(card => [card.id, card]));
+    for (const card of changes.cards) { cards.set(card.id, card); row.deleted = row.deleted.filter(id => id !== card.id); }
+    for (const id of changes.deletedCardIds) { cards.delete(id); row.deleted.push(id); }
+    row.payload.cards = [...cards.values()];
+    if (changes.progress) row.payload.progress = changes.progress;
+    if ('session' in changes) {
+      if (!changes.session) row.payload.session = null;
+      else {
+        assert.equal('reviewCards' in changes.session, false);
+        const { reviewIds, newIds, ...metadata } = changes.session;
+        row.payload.session = { ...metadata, reviewCards: reviewIds.map(id => cards.get(id)), newCards: newIds.map(id => cards.get(id)) };
+      }
+    }
+    for (const lesson of changes.lessons) {
+      row.knownLessons.push(lesson.id);
+      row.payload.read = lesson.read ? [...new Set([...row.payload.read, lesson.id])] : row.payload.read.filter(id => id !== lesson.id);
+    }
+    row.revision++; row.updated_at = new Date().toISOString();
+    return { data: { conflict: false, revision: row.revision, updated_at: row.updated_at }, error: null };
   },
 };
 const clientPath = path.resolve(__dirname, '../src/lib/supabase.ts');
@@ -52,6 +80,7 @@ const { useStore } = require('../src/lib/store.ts');
 const { useStudyStore } = require('../src/lib/study-store.ts');
 const { useLibraryProgress } = require('../src/lib/library-store.ts');
 const { importGuestData, isLearningData } = require('../src/lib/learning-data.ts');
+const { sessionRecord, buildLearningChanges, hasLearningChanges, sameLearningData } = require('../src/lib/learning-repository.ts');
 const { startCloudSync, syncNow, snapshot, useCloudSync } = require('../src/lib/cloud-sync.ts');
 async function waitFor(predicate) {
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -106,7 +135,7 @@ test('cloud persistence, account isolation, offline recovery and concurrency', a
 
   missingTable = true;
   await syncNow();
-  assert.match(useCloudSync.getState().error, /20261004_learning_sync.sql/);
+  assert.match(useCloudSync.getState().error, /normalize_learning_sync/);
   assert.equal(snapshot().cards.length, 3, 'missing schema does not discard local learning');
   missingTable = false;
   await syncNow();
@@ -188,4 +217,23 @@ test('guest import remaps session references and preserves latest review', () =>
   assert.equal(isLearningData({ version: 1, cards: [] }), false);
   assert.equal(isLearningData({ ...merged, session: { ...merged.session, step: 99 } }), false);
   assert.equal(isLearningData({ ...merged, cards: [null] }), false);
+});
+
+test('10,000 cards: one changed word sends one SQL row, metadata sends no vocabulary', () => {
+  const source = snapshot().cards[0];
+  const base = { ...empty(), cards: Array.from({ length: 10000 }, (_, index) => ({ ...source, id: `word-${index}`, front: `word ${index}` })) };
+  const next = clone(base); next.cards[5000].backEn = 'Only this word changed';
+  const changes = buildLearningChanges(base, next);
+  assert.equal(changes.cards.length, 1);
+  assert.equal(changes.cards[0].id, 'word-5000');
+  assert.equal(changes.progress, undefined);
+  assert.equal(changes.session, undefined);
+  assert.equal(JSON.stringify(changes).length < 1000, true);
+  const metadata = { ...base, read: ['ipa'] };
+  assert.equal(buildLearningChanges(base, metadata).cards.length, 0);
+  assert.deepEqual(buildLearningChanges(base, metadata).lessons, [{ id: 'ipa', read: true }]);
+  assert.equal(hasLearningChanges(buildLearningChanges(base, clone(base))), false);
+  assert.equal(sameLearningData(base, { ...base, cards: [...base.cards].reverse() }), true);
+  const latestWrite = requests.filter(request => request.name === 'save_learning_changes').at(-1);
+  assert.equal('payload' in latestWrite.parameters, false);
 });
