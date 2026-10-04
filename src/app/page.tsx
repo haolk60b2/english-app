@@ -22,7 +22,7 @@ export default function Dashboard() {
         <div className="absolute -top-20 -right-20 h-64 w-64 bg-amber-500/20 rounded-full blur-3xl" />
         <p className="text-xs tracking-[0.2em] text-amber-200/70 font-semibold">HALLMARK EDITION</p>
         <h1 className="mt-1 text-2xl md:text-3xl font-serif font-bold">Chào mừng trở lại 👋</h1>
-        <p className="text-zinc-300 mt-2">KPI <b>20 từ mới/ngày</b> • Lịch vàng 1–3–7–14–30–60 • 15 phút/ngày</p>
+        <p className="text-zinc-300 mt-2">Dành <b>30 phút mỗi ngày</b>: ôn từ → học mới → kiểm tra nhớ → dùng từ trong câu.</p>
         <div className="mt-6 grid grid-cols-3 gap-3">
           <Stat label="Streak" value={`${progress.streak} ngày`} sub="giữ lửa" />
           <Stat label="Đến hạn hôm nay" value={`${due} thẻ`} sub={`${cards.length} tổng`} highlight />
@@ -32,7 +32,8 @@ export default function Dashboard() {
           <div className="h-full bg-gradient-to-r from-amber-400 to-rose-400" style={{width: `${kpiPct}%`}} />
         </div>
         <div className="flex gap-3 mt-6 flex-wrap">
-          <Link href="/flashcards" className="bg-white text-zinc-900 px-6 py-2.5 rounded-full font-medium text-sm shadow">Học Hallmark →</Link>
+          <Link href="/study" className="bg-white text-zinc-900 px-6 py-2.5 rounded-full font-medium text-sm shadow">Bắt đầu buổi học 30 phút →</Link>
+          <Link href="/library" className="bg-white/10 border border-white/20 text-white px-5 py-2.5 rounded-full text-sm">Tài liệu phát âm & ngữ pháp</Link>
           <Link href="/settings" className="bg-white/10 border border-white/20 text-white px-5 py-2.5 rounded-full text-sm">Cài đặt API</Link>
         </div>
       </div>
@@ -53,7 +54,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
-        <CardLink href="/flashcards" title="Flashcard Hallmark" desc={`${cards.length} từ • ${due} đến hạn • ${newToday}/${kpiGoal} hôm nay`} badge="KPI 20/ngày" highlight />
+        <CardLink href="/flashcards" title="Kho flashcard" desc={`${cards.length} từ • ${due} đến hạn • luyện thêm theo nhu cầu`} badge="Ôn cách quãng" highlight />
         <CardLink href="/reading" title="Reading & Listening" desc="Bài đọc CEFR + TTS OpenAI/ShopAIKey" badge="AI TTS" />
         <CardLink href="/writing" title="AI Writing Coach" desc="Chấm gpt-4.1-mini, giải thích tiếng Việt" badge="GPT-4.1" />
       </div>

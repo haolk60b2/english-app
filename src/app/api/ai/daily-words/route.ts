@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "system",
-          content: `Bạn là chuyên gia từ vựng CEFR ${level}. Tạo ${n} từ/cụm tiếng Anh MỚI TUYỆT ĐỐI KHÔNG TRÙNG với exclude list (đã học các ngày trước), chủ đề ${chosenTopic}, level ${level}, đa dạng loại từ. Trả JSON với key "words": mảng ${n} object {front, back, example, exampleVi, phonetic, level, tags}. Ưu tiên từ dùng hàng ngày, dễ nói/viết. KHÔNG được trả lại bất kỳ từ nào trong exclude.`,
+          content: `Bạn là chuyên gia từ vựng CEFR ${level}. Tạo ${n} từ/cụm tiếng Anh MỚI TUYỆT ĐỐI KHÔNG TRÙNG với exclude list, chủ đề ${chosenTopic}, level ${level}, đa dạng loại từ. Trả JSON với key "words": mảng ${n} object {front, back, backEn, backVi, example, exampleVi, phonetic, level, tags}. back và backVi là nghĩa tiếng Việt ngắn gọn; backEn là định nghĩa bằng tiếng Anh đơn giản phù hợp level. example là câu tiếng Anh, exampleVi là bản dịch tiếng Việt. KHÔNG được trả lại bất kỳ từ nào trong exclude.`,
         },
         { role: "user", content: `Exclude (${excludeSet.size} từ đã học): ${excludeStr || "(none)"}\nTạo ${n} từ mới level ${level} chủ đề ${chosenTopic}, không trùng exclude.` },
       ],
-    });
+    }, req.headers);
     const raw = completion.choices[0]?.message?.content || "{}";
     const data = JSON.parse(raw);
     let words = (data.words || data.data || []) as any[];
@@ -47,6 +47,8 @@ export async function POST(req: NextRequest) {
       cleaned.push({
         front,
         back: String(w.back || w.meaning || "").trim(),
+        backEn: String(w.backEn || "").trim(),
+        backVi: String(w.backVi || w.back || "").trim(),
         example: String(w.example || "").trim(),
         exampleVi: String(w.exampleVi || w.translation || "").trim(),
         phonetic: String(w.phonetic || "/.../").trim(),

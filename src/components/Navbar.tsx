@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { BookOpen, Mic, PenLine, BookText, LayoutDashboard, Settings, Languages } from "lucide-react";
+import { BookOpen, Mic, PenLine, BookText, LayoutDashboard, Settings, Languages, Timer, Library } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/study", label: "Học 30 phút", icon: Timer },
+  { href: "/library", label: "Tài liệu", icon: Library },
   { href: "/flashcards", label: "Flashcards", icon: BookOpen },
   { href: "/speaking", label: "Luyện nói", icon: Mic },
   { href: "/translate", label: "Dịch audio", icon: Languages },
@@ -13,7 +15,7 @@ const nav = [
 
 export default function Navbar() {
   return (
-    <nav className="flex items-center gap-1 p-3 border-b bg-white/80 backdrop-blur sticky top-0 z-10">
+    <nav aria-label="Điều hướng chính" className="flex items-center gap-1 p-3 border-b bg-white/95 sticky top-0 z-10 overflow-x-auto whitespace-nowrap">
       <Link href="/" className="font-bold text-lg mr-4 flex items-center gap-2">
         <span className="bg-black text-white px-2 py-1 rounded text-sm">EN</span> Cấp Tốc
       </Link>
@@ -26,7 +28,6 @@ export default function Navbar() {
           <n.icon size={16} /> {n.label}
         </Link>
       ))}
-      <div className="ml-auto text-xs text-zinc-500">MVP • Next.js + Supabase + FSRS</div>
     </nav>
   );
 }

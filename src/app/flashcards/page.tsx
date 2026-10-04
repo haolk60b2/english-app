@@ -1,15 +1,22 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import PronunciationPractice from "@/components/PronunciationPractice";
+import CardMeaning from "@/components/CardMeaning";
 import { useStore } from "@/lib/store";
 import { INTERVALS_DAYS, stageLabel, stageColor, isDueToday } from "@/lib/leitner";
 
 // Hallmark premium palette
 export default function FlashcardsPage() {
   const { cards, reviewLeitner, addCardsBulk, addCard, importSeed, progress, markDailyGen } = useStore();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const audioCache = useRef(new Map<string, Blob>());
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [showBack, setShowBack] = useState(false);
   const [mode, setMode] = useState<"learn" | "review" | "all">("review");
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
+  const [backEn, setBackEn] = useState("");
   const [level, setLevel] = useState("B1");
   const [aiLoading, setAiLoading] = useState(false);
   const [dailyLoading, setDailyLoading] = useState(false);
@@ -36,22 +43,27 @@ export default function FlashcardsPage() {
   }, []);
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const newToday = cards.filter(c => c.createdAt?.slice(0, 10) === todayStr);
-  const dueCards = cards.filter(c => isDueToday(c.due)).sort((a, b) => a.leitnerStage - b.leitnerStage || new Date(a.due).getTime() - new Date(b.due).getTime());
-  const byStage: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
-  cards.forEach(c => { byStage[c.leitnerStage ?? 0] = (byStage[c.leitnerStage ?? 0] || 0) + 1; });
+  const newToday = useMemo(() => cards.filter(c => c.createdAt?.slice(0, 10) === todayStr).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [cards, todayStr]);
+  const dueCards = useMemo(() => cards.filter(c => isDueToday(c.due)).sort((a, b) => a.leitnerStage - b.leitnerStage || new Date(a.due).getTime() - new Date(b.due).getTime()), [cards, todayStr]);
+  const byStage = useMemo(() => {
+    const counts: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    cards.forEach(c => { counts[c.leitnerStage ?? 0] += 1; });
+    return counts;
+  }, [cards]);
   const kpiGoal = progress.dailyGoal || 20;
   const kpiNew = newToday.length;
   const kpiProgress = Math.min(100, Math.round((kpiNew / kpiGoal) * 100));
   const dueProgress = cards.length ? Math.round(((cards.length - dueCards.length) / cards.length) * 100) : 0;
 
   // queue theo mode
-  const queue = mode === "learn" ? cards.filter(c => c.createdAt?.slice(0, 10) === todayStr).sort((a,b)=> new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : mode === "review" ? dueCards : cards;
+  const [sessionReviewed, setSessionReviewed] = useState<Set<string>>(new Set());
+  const queue = useMemo(() => (mode === "learn" ? newToday : mode === "review" ? dueCards : cards).filter(c => !sessionReviewed.has(c.id)), [mode, newToday, dueCards, cards, sessionReviewed]);
   const current = queue[0];
 
   const handleAnswer = (correct: boolean) => {
     if (!current) return;
     reviewLeitner(current.id, correct);
+    setSessionReviewed(ids => new Set(ids).add(current.id));
     setShowBack(false);
     if (correct) setToast("✨ +10 XP • Lên lịch " + INTERVALS_DAYS[Math.min(current.leitnerStage, 5)] + " ngày sau");
     else setToast("💪 Không sao, ôn lại sau 1 ngày nhé!");
@@ -69,7 +81,7 @@ export default function FlashcardsPage() {
       const remaining = Math.max(1, kpiGoal - kpiNew);
       const count = kpiNew >= kpiGoal ? kpiGoal : remaining; // nếu đã đủ KPI, tạo thêm 1 batch mới
       const before = cards.length;
-      const res = await fetch("/api/ai/daily-words", { method: "POST", headers, body: JSON.stringify({ count, level, exclude }) });
+      const res = await fetch("/api/ai/daily-words", { method: "POST", headers, body: JSON.stringify({ count, level, exclude }), signal: AbortSignal.timeout(45000) });
       const data = await res.json();
       if (data.error && !data.words && !data.fallback) { alert(data.error); return; }
       const words = data.words || data.fallback || [];
@@ -93,15 +105,19 @@ export default function FlashcardsPage() {
       const k = localStorage.getItem("openai_api_key"); if (k) headers["x-openai-key"] = k;
       const b = localStorage.getItem("openai_base_url"); if (b) headers["x-openai-base-url"] = b;
       const m = localStorage.getItem("openai_model"); if (m) headers["x-openai-model"] = m;
-      const res = await fetch("/api/ai/explain", { method: "POST", headers, body: JSON.stringify({ word: front, level }) });
+      const res = await fetch("/api/ai/explain", { method: "POST", headers, body: JSON.stringify({ word: front, level }), signal: AbortSignal.timeout(20000) });
       const data = await res.json();
       if (data.error) alert(data.error);
-      else { if (data.backVi) setBack(data.backVi); if (data.phonetic) setToast(`IPA ${data.phonetic}`); }
-    } finally { setAiLoading(false); }
+      else if (data.mock) setToast("Chưa có nghĩa AI thật. Kiểm tra API key ở Cài đặt.");
+      else { if (data.backVi) setBack(data.backVi); if (data.backEn) setBackEn(data.backEn); if (data.phonetic) setToast(`IPA ${data.phonetic}`); }
+    } catch { setToast("Không tải được nghĩa. Kiểm tra kết nối hoặc thử lại sau."); } finally { setAiLoading(false); }
   };
 
   const playTts = async (text: string, key?: string) => {
     if (!text.trim()) return;
+    if (ttsLoading) return;
+    audioRef.current?.pause();
+    if (audioUrlRef.current) { URL.revokeObjectURL(audioUrlRef.current); audioUrlRef.current = null; }
     const id = key || text;
     setTtsLoading(id);
     // Ưu tiên Web Speech API (miễn phí, không AI, không 429/503) — đúng yêu cầu "đừng xài AI"
@@ -115,19 +131,33 @@ export default function FlashcardsPage() {
         u.pitch = 1;
         const v = webVoices.find(v=> v.voiceURI === webVoiceURI);
         if (v) u.voice = v;
+        u.onend = () => setTtsLoading(null);
+        u.onerror = () => setTtsLoading(null);
         window.speechSynthesis.speak(u);
-        setTimeout(()=> setTtsLoading(null), 800);
         return;
       } catch (e) { setToast(String(e).slice(0,120)); setTtsLoading(null); return; }
     }
     // Fallback AI (khi user chọn AI)
     try {
+      const cacheKey = JSON.stringify([text, ttsModel, ttsVoice, localStorage.getItem("openai_base_url")]);
+      const playBlob = async (blob: Blob) => {
+        const url = URL.createObjectURL(blob);
+        audioUrlRef.current = url;
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        const release = () => { URL.revokeObjectURL(url); if (audioUrlRef.current === url) audioUrlRef.current = null; };
+        audio.onended = release;
+        audio.onerror = release;
+        await audio.play();
+      };
+      const cached = audioCache.current.get(cacheKey);
+      if (cached) { await playBlob(cached); return; }
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       const k = localStorage.getItem("openai_api_key"); if (k) headers["x-openai-key"] = k;
       const b = localStorage.getItem("openai_base_url"); if (b) headers["x-openai-base-url"] = b;
       const payload: any = { text: text.slice(0, 400), model: ttsModel, voice: ttsVoice };
       if (ttsModel === "speech-02-hd" && ttsVoice === "alloy") payload.voice = "male-qn-qingse";
-      const res = await fetch("/api/ai/tts", { method: "POST", headers, body: JSON.stringify(payload) });
+      const res = await fetch("/api/ai/tts", { method: "POST", headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(20000) });
       if (!res.ok) {
         const err = await res.json().catch(()=>({error: res.statusText}));
         setToast(`TTS AI lỗi 429/503: ${err.error || JSON.stringify(err).slice(0,100)} → thử chuyển sang Browser`);
@@ -140,12 +170,31 @@ export default function FlashcardsPage() {
       const ct = res.headers.get("content-type") || "";
       if (ct.includes("application/json")) {
         const data = await res.json();
-        if (data.url) { new Audio(data.url).play(); return; }
+        if (data.url) { const audio = new Audio(data.url); audioRef.current = audio; await audio.play(); return; }
       }
       const blob = await res.blob();
-      new Audio(URL.createObjectURL(blob)).play();
+      if (audioCache.current.size >= 30) audioCache.current.delete(audioCache.current.keys().next().value!);
+      audioCache.current.set(cacheKey, blob);
+      await playBlob(blob);
     } catch (e) { setToast(String(e).slice(0,120)); } finally { setTtsLoading(null); }
   };
+
+  useEffect(() => () => {
+    window.speechSynthesis?.cancel();
+    audioRef.current?.pause();
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const element = event.target as HTMLElement;
+      if (element.closest("input, textarea, select, button, audio, [contenteditable='true']") || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+      if (event.code === "Space" && current) { event.preventDefault(); setShowBack(value => !value); }
+      if (showBack && (event.key === "1" || event.key === "2")) { event.preventDefault(); handleAnswer(event.key === "2"); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
     <div className="space-y-6">
@@ -234,7 +283,8 @@ export default function FlashcardsPage() {
       {!current ? (
         <div className="rounded-[28px] border border-dashed bg-white p-8 text-center">
           <p className="text-3xl">🎉</p>
-          <p className="mt-2 text-lg font-serif font-semibold">{mode==="learn" ? "Chưa có từ mới hôm nay" : mode==="review" ? "Hết từ đến hạn — xuất sắc!" : "Chưa có thẻ nào"}</p>
+          <p className="mt-2 text-lg font-serif font-semibold">{sessionReviewed.size ? "Đã hoàn thành lượt học này!" : mode==="learn" ? "Chưa có từ mới hôm nay" : mode==="review" ? "Hết từ đến hạn — xuất sắc!" : "Chưa có thẻ nào"}</p>
+          {sessionReviewed.size > 0 && mode !== "review" && <button onClick={() => { setSessionReviewed(new Set()); setShowBack(false); }} className="mt-3 rounded-full border px-4 py-2 text-sm">Ôn lại lượt này</button>}
           <p className="text-sm text-zinc-500 mt-1">{mode==="review" ? "Quay lại sau nhé, FSRS/Leitner đã lên lịch cho ngày tới." : `Bấm "Tạo ${kpiGoal} từ" để bắt đầu hành trình Hallmark hôm nay.`}</p>
           {mode!=="learn" && kpiNew < kpiGoal && <button onClick={()=>setMode("learn")} className="mt-4 px-5 py-2 bg-zinc-900 text-white rounded-full text-sm">Sang học 20 từ mới →</button>}
         </div>
@@ -243,7 +293,7 @@ export default function FlashcardsPage() {
           <div className="text-center text-xs text-zinc-500 mb-2">{queue.indexOf(current)+1} / {queue.length} • {mode==="learn" ? "HỌC MỚI" : "ÔN TẬP"} • Nhấn thẻ để lật</div>
           <div
             onClick={() => setShowBack(!showBack)}
-            className={`relative cursor-pointer rounded-[24px] border-2 bg-[#FFFBEB] p-[1px] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.25)] transition-all duration-300 ${showBack ? "scale-[0.99]" : "hover:scale-[1.01]"}`}
+            className={`relative cursor-pointer rounded-[24px] border-2 bg-[#FFFBEB] p-[1px] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.25)] transition-transform duration-150 ${showBack ? "scale-[0.99]" : "hover:scale-[1.01]"}`}
           >
             <div className="rounded-[22px] bg-white p-6 md:p-8" style={{ backgroundImage: "radial-gradient(#fff7ed 1px, transparent 1px)", backgroundSize: "18px 18px" }}>
               <div className="flex items-center justify-between text-xs">
@@ -265,12 +315,12 @@ export default function FlashcardsPage() {
                   <p className="mt-6 text-sm text-zinc-400 italic">Chạm để xem nghĩa — Active Recall: cố nhớ 5 giây trước khi lật 💭</p>
                 ) : (
                   <div className="mt-6 animate-in fade-in">
-                    <p className="text-xl font-medium text-zinc-900">{current.back}</p>
+                    <CardMeaning key={current.id} card={current} />
                     {current.example && (
                       <div className="mt-3 rounded-2xl bg-amber-50 border border-amber-100 p-3 text-left">
                         <p className="text-sm text-zinc-800 italic">“{current.example}”</p>
-                        {current.exampleVi && <p className="text-xs text-zinc-500 mt-1">→ {current.exampleVi}</p>}
-                        <button onClick={()=> playTts(current.example!, current.id+"-ex2")} disabled={ttsLoading===current.id+"-ex2"} className="mt-2 text-xs px-2 py-1 rounded-full bg-white border">🔊 Nghe</button>
+                        {current.exampleVi && <details onClick={event => event.stopPropagation()} className="mt-1 text-xs text-zinc-500"><summary className="cursor-pointer">Xem bản dịch câu</summary><p className="mt-1">{current.exampleVi}</p></details>}
+                        <button onClick={event => { event.stopPropagation(); void playTts(current.example!, current.id+"-ex2"); }} disabled={ttsLoading===current.id+"-ex2"} className="mt-2 text-xs px-2 py-1 rounded-full bg-white border">🔊 Nghe</button>
                       </div>
                     )}
                     <p className="mt-3 text-xs text-zinc-500">Khoảng cách tiếp theo nếu nhớ: <b>{INTERVALS_DAYS[Math.min(current.leitnerStage, 5)]} ngày</b> • Quên: quay về 1 ngày</p>
@@ -282,6 +332,8 @@ export default function FlashcardsPage() {
               <div className="absolute right-4 top-4 h-8 w-8 rounded-full bg-gradient-to-br from-amber-300 to-rose-300 opacity-20 blur-sm" />
             </div>
           </div>
+
+          <PronunciationPractice key={current.id} word={current.front} phonetic={current.phonetic} />
 
           {showBack ? (
             <div className="mt-4 grid grid-cols-2 gap-3">
@@ -312,26 +364,27 @@ export default function FlashcardsPage() {
         <h3 className="font-serif font-semibold">Thêm thủ công ✍️</h3>
         <div className="grid gap-2 mt-3">
           <div className="grid md:grid-cols-2 gap-2">
-            <input value={front} onChange={e=>setFront(e.target.value)} placeholder="Từ tiếng Anh (ví dụ: serendipity)" className="border rounded-xl px-3 py-2 text-sm" />
+            <input value={front} disabled={aiLoading} onChange={e=>{ setFront(e.target.value); setBackEn(""); }} placeholder="Từ tiếng Anh (ví dụ: serendipity)" className="border rounded-xl px-3 py-2 text-sm" />
             <input value={back} onChange={e=>setBack(e.target.value)} placeholder="Nghĩa tiếng Việt" className="border rounded-xl px-3 py-2 text-sm" />
           </div>
+          <input value={backEn} onChange={e => setBackEn(e.target.value)} placeholder="Định nghĩa tiếng Anh đơn giản (tùy chọn)" aria-label="Định nghĩa tiếng Anh" className="border rounded-xl px-3 py-2 text-sm" />
           <div className="flex gap-2">
             <button onClick={handleAiSingle} disabled={aiLoading || !front} className="px-4 py-2 bg-zinc-900 text-white rounded-full text-sm disabled:opacity-50">{aiLoading ? "..." : "AI gợi ý nghĩa"}</button>
             <button onClick={()=>{
               if(!front||!back) return;
               const key = front.toLowerCase().trim();
               if (cards.some(c=> c.front.toLowerCase().trim()===key)) { setToast(`⚠️ "${front}" đã học rồi — không thêm trùng!`); return; }
-              addCard(front, back, undefined, level); setFront(""); setBack(""); setToast("Đã thêm thẻ mới! ✓ Không trùng");
+              addCard(front, back, undefined, level, undefined, undefined, backEn.trim() || undefined); setFront(""); setBack(""); setBackEn(""); setToast("Đã thêm thẻ mới! ✓ Không trùng");
             }} className="px-4 py-2 border rounded-full text-sm bg-white">Thêm thẻ</button>
           </div>
         </div>
       </div>
 
       {/* Hallmark gallery */}
-      <details className="rounded-2xl bg-white border p-5">
+      <details className="rounded-2xl bg-white border p-5" onToggle={e => setGalleryOpen(e.currentTarget.open)}>
         <summary className="font-serif font-semibold cursor-pointer">Bộ sưu tập Hallmark • {cards.length} thẻ</summary>
         <div className="mt-3 grid md:grid-cols-3 gap-2">
-          {cards.slice(0, 30).map(c=> (
+          {galleryOpen && cards.slice(0, 30).map(c=> (
             <div key={c.id} className="rounded-xl border bg-[#FFFBEB]/50 p-3 text-sm flex flex-col">
               <div className="font-medium font-serif flex items-center gap-1">{c.front} <button onClick={()=> playTts(c.front, c.id)} disabled={ttsLoading===c.id} className="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-white border hover:bg-zinc-900 hover:text-white transition">🔊</button> <span className="text-zinc-500 font-sans">— {c.back}</span></div>
               <div className="mt-1 flex gap-1 flex-wrap">

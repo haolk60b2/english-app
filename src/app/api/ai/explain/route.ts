@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "system",
-          content: `Bạn là giáo viên tiếng Anh. Trả về JSON duy nhất với keys: backVi (nghĩa tiếng Việt ngắn gọn), phonetic (IPA), example (1 câu ví dụ level ${level}), exampleVi (dịch câu ví dụ), cefr (A1-C2), tags (array loại từ).${context ? ` Ngữ cảnh: ${context}` : ""}`,
+          content: `Bạn là giáo viên tiếng Anh. Trả về JSON duy nhất với keys: backVi (nghĩa tiếng Việt ngắn gọn), backEn (định nghĩa bằng tiếng Anh đơn giản phù hợp level ${level}), phonetic (IPA), example (1 câu ví dụ level ${level}), exampleVi (dịch câu ví dụ), cefr (A1-C2), tags (array loại từ).${context ? ` Ngữ cảnh: ${context}` : ""}`,
         },
         { role: "user", content: `Từ/cụm: "${word}"` },
       ],
@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     const data = JSON.parse(raw);
     return NextResponse.json({
       backVi: data.backVi || data.meaning,
+      backEn: data.backEn,
       example: data.example,
       exampleVi: data.exampleVi,
       phonetic: data.phonetic,

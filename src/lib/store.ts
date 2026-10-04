@@ -8,6 +8,8 @@ export type VocabCard = Card & {
   id: string;
   front: string;
   back: string;
+  backEn?: string;
+  backVi?: string;
   example?: string;
   phonetic?: string;
   exampleVi?: string;
@@ -30,8 +32,9 @@ type Progress = {
 type State = {
   cards: VocabCard[];
   progress: Progress;
-  addCard: (front: string, back: string, example?: string, level?: string, phonetic?: string, exampleVi?: string) => void;
-  addCardsBulk: (words: { front: string; back: string; example?: string; phonetic?: string; exampleVi?: string; level?: string; tags?: string[] }[]) => void;
+  addCard: (front: string, back: string, example?: string, level?: string, phonetic?: string, exampleVi?: string, backEn?: string) => void;
+  addCardsBulk: (words: { front: string; back: string; backEn?: string; backVi?: string; example?: string; phonetic?: string; exampleVi?: string; level?: string; tags?: string[] }[]) => void;
+  setCardMeanings: (id: string, backEn: string, backVi: string) => void;
   review: (id: string, rating: Rating) => void;
   reviewLeitner: (id: string, correct: boolean) => void;
   importSeed: () => void;
@@ -60,7 +63,9 @@ export const useStore = create<State>()(
       cards: [],
       progress: { streak: 0, lastStudyDate: null, totalReviews: 0, xp: 0, level: 1, dailyGoal: 20, lastDailyGen: null },
 
-      addCard: (front, back, example, level = "B1", phonetic, exampleVi) => {
+      setCardMeanings: (id, backEn, backVi) => set({ cards: get().cards.map(c => c.id === id ? { ...c, backEn, backVi } : c) }),
+
+      addCard: (front, back, example, level = "B1", phonetic, exampleVi, backEn) => {
         const key = String(front).toLowerCase().trim();
         if (get().cards.some(c => c.front.toLowerCase().trim() === key)) {
           console.warn(`[store] Từ "${front}" đã tồn tại — bỏ qua để giữ không trùng`);
@@ -71,7 +76,7 @@ export const useStore = create<State>()(
         const card: VocabCard = {
           ...base,
           id: Math.random().toString(36).slice(2, 9),
-          front: String(front).trim(), back: String(back).trim(), example, phonetic, exampleVi, level, tags: [],
+          front: String(front).trim(), back: String(back).trim(), backVi: String(back).trim(), backEn, example, phonetic, exampleVi, level, tags: [],
           leitnerStage: 0,
           createdAt: now.toISOString(),
           due: now,
@@ -100,7 +105,7 @@ export const useStore = create<State>()(
           return {
             ...base,
             id: Math.random().toString(36).slice(2, 9),
-            front: String(w.front).trim(), back: String(w.back).trim(), example: w.example, phonetic: w.phonetic, exampleVi: w.exampleVi,
+            front: String(w.front).trim(), back: String(w.back).trim(), backEn: w.backEn, backVi: w.backVi, example: w.example, phonetic: w.phonetic, exampleVi: w.exampleVi,
             level: w.level || "B1", tags: w.tags || [],
             leitnerStage: 0,
             createdAt: now.toISOString(),
@@ -121,7 +126,7 @@ export const useStore = create<State>()(
           let ns = c.leitnerStage;
           if (rating === Rating.Again) ns = 0;
           else if (rating >= Rating.Good) ns = Math.min(6, (ns + 1) as LeitnerStage) as LeitnerStage;
-          return { ...res.card, id: c.id, front: c.front, back: c.back, example: c.example, phonetic: c.phonetic, exampleVi: c.exampleVi, level: c.level, tags: c.tags, leitnerStage: ns, createdAt: c.createdAt } as VocabCard;
+          return { ...c, ...res.card, leitnerStage: ns } as VocabCard;
         });
         const prog = get().progress;
         const today = new Date().toISOString().slice(0, 10);
@@ -148,8 +153,9 @@ export const useStore = create<State>()(
           const cur = (c.leitnerStage ?? 0) as LeitnerStage;
           const next = correct ? (Math.min(6, cur + 1) as LeitnerStage) : 0 as LeitnerStage;
           const due = dueDateForStage(next, now);
+          if (next === 0) due.setDate(due.getDate() + 1);
           // cũng cập nhật FSRS fields để đồng bộ
-          const fsrsCard = { ...c, due } as Card;
+          const fsrsCard = { ...c, due, last_review: now } as Card;
           return { ...fsrsCard, id: c.id, front: c.front, back: c.back, example: c.example, phonetic: c.phonetic, exampleVi: c.exampleVi, level: c.level, tags: c.tags, leitnerStage: next, createdAt: c.createdAt } as VocabCard;
         });
         const prog = get().progress;
