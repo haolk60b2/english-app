@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import PracticeLibrary from "@/components/PracticeLibrary";
 import PodcastPlayer from "@/components/PodcastPlayer";
+import dynamic from "next/dynamic";
+
+const PodcastImport = dynamic(() => import("@/components/PodcastImport"), { loading: () => <p>Đang mở kho bài nhập…</p> });
 
 const episodes = [
   { id: "01", title: "Episode 01 · Introductions", goal: "Tập trung vào phần mở đầu: ai đang nói, họ giới thiệu nhau thế nào?", url: "https://learnenglish.britishcouncil.org/free-resources/general/audio-series/podcasts/s1/episode-01", audio: "https://learnenglish.britishcouncil.org/sites/podcasts/files/podcast/elementary-podcasts-s01-e01.mp3" },
@@ -21,8 +24,8 @@ export default function PodcastsPage() {
   const episode = episodes[selected];
   return <div className="space-y-6">
     <header className="rounded-3xl border bg-amber-50 p-6 md:p-8"><p className="text-sm font-semibold text-amber-800">NGHE CÓ MỤC TIÊU</p><h1 className="mt-2 font-serif text-3xl font-bold">Podcast & luyện nghe</h1><p className="mt-3 max-w-2xl text-zinc-600">Nghe một đoạn vừa sức, kiểm tra ý chính rồi đọc theo một câu hữu ích. Bắt đầu 7–8 phút; không cần nghe hết một tập dài trong ngày.</p><Link href="/study" className="mt-4 inline-block text-sm underline">Quay lại lịch học 30 phút →</Link></header>
-    <div className="flex flex-wrap gap-2">{[["short", "Hội thoại ngắn · A1–B1"], ["real", "Podcast người thật · A2–B1"], ["file", "Audio của tôi"]].map(([value, label]) => <button key={value} aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-full border px-4 py-2 text-sm ${mode === value ? "bg-zinc-900 text-white" : "bg-white"}`}>{label}</button>)}</div>
-    {mode === "file" ? <section className="space-y-4 rounded-2xl border bg-white p-5"><label className="block font-semibold" htmlFor="podcast-file">Mở MP3 hoặc audio trên máy</label><p className="text-sm text-zinc-600">File phát tại trình duyệt, không tải lên máy chủ. Bạn cần chọn lại file sau khi tải lại trang.</p><input id="podcast-file" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg" className="max-w-full text-sm" onChange={event => {
+    <div className="flex flex-wrap gap-2">{[["short", "Hội thoại ngắn · A1–B1"], ["real", "Podcast người thật · A2–B1"], ["file", "Audio của tôi"], ["import", "Nhập bài · AI tạo câu hỏi"]].map(([value, label]) => <button key={value} aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-full border px-4 py-2 text-sm ${mode === value ? "bg-zinc-900 text-white" : "bg-white"}`}>{label}</button>)}</div>
+    {mode === "import" ? <PodcastImport /> : mode === "file" ? <section className="space-y-4 rounded-2xl border bg-white p-5"><label className="block font-semibold" htmlFor="podcast-file">Mở MP3 hoặc audio trên máy</label><p className="text-sm text-zinc-600">File phát tại trình duyệt, không tải lên máy chủ. Bạn cần chọn lại file sau khi tải lại trang.</p><input id="podcast-file" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg" className="max-w-full text-sm" onChange={event => {
       const file = event.target.files?.[0];
       if (!file) return;
       if (!file.type.startsWith("audio/") && !/\.(mp3|m4a|wav|ogg)$/i.test(file.name)) { setFileError("Hãy chọn file audio như MP3, M4A, WAV hoặc OGG."); return; }

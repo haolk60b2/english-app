@@ -1,9 +1,9 @@
 export type PracticeMaterial = {
   id: string; kind: "reading" | "podcast"; level: "A1" | "A2" | "B1";
   title: string; minutes: number; goal: string;
-  lines: { text: string; vi: string }[];
+  lines: { text: string; vi: string; start?: number; end?: number }[];
   vocabulary: { word: string; meaning: string; example: string }[];
-  questions: { prompt: string; options: string[]; answer: number; explanation: string }[];
+  questions: { prompt: string; options: string[]; answer: number; explanation: string; evidenceIndex?: number }[];
   task: string;
 };
 
