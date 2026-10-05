@@ -9,6 +9,7 @@ import { pickFallback } from "@/lib/fallback-words";
 import StudyRecall, { speakStudyText } from "@/components/StudyRecall";
 import PronunciationPractice from "@/components/PronunciationPractice";
 import { useCloudSync } from "@/lib/cloud-sync";
+import StudySkillsPlan from "@/components/StudySkillsPlan";
 
 const subscribe = () => () => {};
 const button = "rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40";
@@ -56,6 +57,7 @@ export default function StudyPage() {
       <div className="grid gap-3 sm:grid-cols-2">{STUDY_STEPS.map((step, i) => <div key={step.title} className="rounded-2xl border bg-white p-5"><p className="text-sm text-amber-700">Chặng {i + 1} · {step.minutes} phút</p><h2 className="mt-1 font-semibold">{step.title}</h2><p className="mt-2 text-sm text-zinc-600">{step.description}</p></div>)}</div>
       <p className="text-sm text-zinc-500">Tiến độ lưu trên máy và đồng bộ Supabase sau khi đăng nhập. Đồng hồ tạm dừng khi tab bị ẩn; thời gian từng chặng là gợi ý, không bắt bạn chờ hết phút.</p>
       <Link className="inline-block text-sm underline" href="/library">Mở tài liệu phát âm và ngữ pháp →</Link>
+      <StudySkillsPlan />
     </div>
   );
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, Mic, PenLine, BookText, LayoutDashboard, Settings, Languages, Timer, Library } from "lucide-react";
+import { BookOpen, Mic, PenLine, BookText, LayoutDashboard, Settings, Languages, Timer, Library, Headphones } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -8,7 +8,8 @@ const nav = [
   { href: "/flashcards", label: "Flashcards", icon: BookOpen },
   { href: "/speaking", label: "Luyện nói", icon: Mic },
   { href: "/translate", label: "Dịch audio", icon: Languages },
-  { href: "/reading", label: "Reading", icon: BookText },
+  { href: "/reading", label: "Luyện đọc", icon: BookText },
+  { href: "/podcasts", label: "Podcast", icon: Headphones },
   { href: "/writing", label: "Writing Coach", icon: PenLine },
   { href: "/settings", label: "Cài đặt", icon: Settings },
 ];

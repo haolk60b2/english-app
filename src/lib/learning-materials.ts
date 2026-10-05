@@ -1,3 +1,5 @@
+import { EXTRA_LESSONS } from "./extra-lessons";
+
 export type Lesson = {
   id: string; category: string; title: string; minutes: number; intro: string;
   notes: string[]; samples: { text: string; note: string }[];
@@ -8,6 +10,7 @@ const pronunciationSource = { title: "British Council · Hướng dẫn luyện 
 const skillsSource = { title: "British Council · Học ở trình độ B1", url: "https://learnenglish.britishcouncil.org/english-levels/improve-your-english-level/how-get-your-english-b1-level" };
 
 export const LESSONS: Lesson[] = [
+  ...EXTRA_LESSONS,
   {
     id: "ipa-vowels", category: "Phát âm", title: "IPA và cặp âm /ɪ/ – /iː/", minutes: 5,
     intro: "Chữ viết không cho biết đầy đủ cách đọc. Dùng IPA cùng âm mẫu để học âm của từng từ.",
